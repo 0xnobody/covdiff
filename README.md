@@ -42,4 +42,4 @@ npm run electron:build
 
 ## Deployment
 
-The dashboard automatically deploys to GitHub Pages when pushed to the main branch.
+The dashboard automatically deploys to GitHub Pages when pushed to the main branch. 
