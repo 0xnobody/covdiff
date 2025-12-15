@@ -39,7 +39,3 @@ npm run build:gh-pages
 # Electron build
 npm run electron:build
 ```
-
-## Deployment
-
-The dashboard automatically deploys to GitHub Pages when pushed to the main branch. 

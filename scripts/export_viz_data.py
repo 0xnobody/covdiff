@@ -158,8 +158,24 @@ def export_module_data(master_conn, cov_conn, binary_id):
     
     frontier_blocks = {}
     for bb_rva, func_id, frontier_type in cov_cur.fetchall():
-        frontier_blocks[bb_rva] = frontier_type
+        frontier_blocks[bb_rva] = {'frontier_type': frontier_type}
     
+    # NEW: Get frontier attribution scores per block
+    cov_cur.execute("""
+        SELECT frontier_bb_rva, attributed_new_bb_count, 
+               unique_new_bb_count, shared_new_bb_count
+        FROM frontier_attribution
+        WHERE binary_id = ?
+    """, (binary_id,))
+
+    for bb_rva, total, unique, shared in cov_cur.fetchall():
+        if bb_rva in frontier_blocks:
+            frontier_blocks[bb_rva].update({
+                'total_new_bb': total,
+                'unique_new_bb': unique,
+                'shared_new_bb': shared
+            })
+
     # Get attribution information
     cov_cur.execute("""
         SELECT new_bb_rva, frontier_bb_rva, is_shared
@@ -227,11 +243,20 @@ def export_module_data(master_conn, cov_conn, binary_id):
                 
                 # Add frontier info if applicable
                 if bb_rva in frontier_blocks:
+                    frontier_info = frontier_blocks[bb_rva]
                     block_obj['is_frontier'] = True
-                    block_obj['frontier_type'] = frontier_blocks[bb_rva]
+                    block_obj['frontier_type'] = frontier_info['frontier_type']
+                    
+                    # Add attribution scores if this frontier unlocked coverage
+                    block_obj['frontier_attribution'] = {
+                        'total_new_bb': frontier_info.get('total_new_bb', 0),
+                        'unique_new_bb': frontier_info.get('unique_new_bb', 0),
+                        'shared_new_bb': frontier_info.get('shared_new_bb', 0)
+                    }
                 else:
                     block_obj['is_frontier'] = False
                     block_obj['frontier_type'] = None
+                    block_obj['frontier_attribution'] = None
                 
                 # Add attribution info if applicable
                 if bb_rva in block_attribution:
@@ -296,13 +321,23 @@ def export_module_data(master_conn, cov_conn, binary_id):
     for src, dst, edge_type in cov_cur.fetchall():
         frontier_edge_set.add((src, dst))
     
-    # Get all edges in G_B (executed graph)
     cov_cur.execute("""
         SELECT src_bb_rva, dst_bb_rva, edge_type
         FROM graph_B_edges
-        WHERE binary_id = ? AND src_bb_rva != -1 AND dst_bb_rva != -1
+        WHERE binary_id = ? 
+          AND edge_type NOT LIKE 'super_root%'
     """, (binary_id,))
-    
+
+    ## Get all edges in G_B (executed graph)
+    #cov_cur.execute("""
+    #    SELECT src_bb_rva, dst_bb_rva, edge_type
+    #    FROM graph_B_edges
+    #    WHERE binary_id = ? 
+    #      AND src_bb_rva != -1 
+    #      AND dst_bb_rva != -1
+    #      AND edge_type NOT LIKE 'super_root%'
+    #""", (binary_id,))
+
     for src_bb_rva, dst_bb_rva, edge_type in cov_cur.fetchall():
         edge_obj = {
             'src_bb_rva': hex(src_bb_rva),

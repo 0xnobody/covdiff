@@ -433,34 +433,37 @@ def compute_diff_labels(cov_conn):
     return count
 
 
-def expand_with_deterministic_paths(cov_conn, master_conn):
+def expand_deterministic_for_sample(cov_conn, master_conn, sample_name):
     """
-    Expand the set of executed blocks to include intermediate blocks on deterministic paths.
+    Expand deterministic paths for a specific sample (A or B).
     
     Problem: Coverage only records non-deterministic edges (conditional branches).
-    If execution goes A->B->C where A->B is deterministic (fallthrough/unconditional)
-    and B->C is conditional, only A->C is recorded, missing B.
+    If execution goes X->Y->Z where X->Y is deterministic (fallthrough/unconditional)
+    and Y->Z is conditional, only X->Z is recorded, missing Y.
     
     Solution: For each covered block, transitively add all blocks reachable via
     deterministic-only edges (fallthrough/branch_unconditional) until hitting:
-    - Another covered block (creates edge in G_B)
+    - Another covered block
     - A block with multiple successors (conditional branch - non-deterministic)
     - End of path
     """
-    print("Step 4a: Expanding with deterministic intermediate blocks...")
+    print(f"Expanding deterministic paths for sample {sample_name}...")
     
     cov_cur = cov_conn.cursor()
     master_cur = master_conn.cursor()
     
-    binaries = cov_cur.execute("SELECT DISTINCT binary_id FROM bb_labels").fetchall()
+    source_table = f'cov_{sample_name}_blocks_joined'
+    
+    # Get all binaries in this sample
+    binaries = cov_cur.execute(f"SELECT DISTINCT binary_id FROM {source_table}").fetchall()
     
     total_added = 0
     
     for (binary_id,) in binaries:
-        print(f"    Processing binary {binary_id}...")
+        print(f"  Processing binary {binary_id}...")
         
-        # Get all blocks currently in coverage B
-        cov_cur.execute("SELECT bb_rva FROM bb_labels WHERE binary_id = ? AND in_B = 1", (binary_id,))
+        # Get all blocks currently in this sample's coverage
+        cov_cur.execute(f"SELECT bb_rva FROM {source_table} WHERE binary_id = ?", (binary_id,))
         covered_blocks = set(row[0] for row in cov_cur.fetchall())
         
         # Build CFG with edge types
@@ -492,16 +495,10 @@ def expand_with_deterministic_paths(cov_conn, master_conn):
                 
                 successors = cfg[current]
                 
-                # Classify this block's successors
                 # Deterministic = single successor that is fallthrough or unconditional branch
-                is_deterministic = False
-                
                 if len(successors) == 1:
                     dst, kind = successors[0]
-                    # Deterministic if it's a fallthrough or unconditional branch
                     if kind in ('fallthrough', 'branch_unconditional'):
-                        is_deterministic = True
-                        
                         if dst not in visited_from_start:
                             visited_from_start.add(dst)
                             
@@ -510,16 +507,13 @@ def expand_with_deterministic_paths(cov_conn, master_conn):
                                 newly_discovered.add(dst)
                                 # Continue traversing
                                 queue.append(dst)
-                            # If dst is covered, we've reached an endpoint (creates edge in G_B)
-                            # Don't continue - let that covered block handle its own expansion
-                
-                # If not deterministic (multiple successors or conditional branch), stop traversing
-                # The non-deterministic edge would have been recorded in coverage
+                            # If dst is covered, stop - let that block handle its expansion
         
-        # Add newly discovered blocks to bb_labels
+        # Add newly discovered blocks to this sample's coverage table
         if newly_discovered:
+            blocks_to_add = []
             for bb_rva in newly_discovered:
-                # Look up func_id and VA range
+                # Look up func_id
                 master_cur.execute(
                     "SELECT func_id FROM basic_blocks WHERE binary_id = ? AND bb_rva = ?",
                     (binary_id, bb_rva)
@@ -528,26 +522,18 @@ def expand_with_deterministic_paths(cov_conn, master_conn):
                 
                 if result:
                     func_id = result[0]
-                    
-                    # Check if in A
-                    cov_cur.execute(
-                        "SELECT 1 FROM cov_A_blocks_joined WHERE binary_id = ? AND bb_rva = ?",
-                        (binary_id, bb_rva)
-                    )
-                    in_A = 1 if cov_cur.fetchone() else 0
-                    in_B = 1
-                    is_new = 1 if in_A == 0 else 0
-                    
-                    cov_cur.execute(
-                        "INSERT OR IGNORE INTO bb_labels (binary_id, func_id, bb_rva, in_A, in_B, is_new) VALUES (?, ?, ?, ?, ?, ?)",
-                        (binary_id, func_id, bb_rva, in_A, in_B, is_new)
-                    )
+                    blocks_to_add.append((binary_id, func_id, bb_rva))
             
-            total_added += len(newly_discovered)
-            print(f"      Added {len(newly_discovered)} intermediate blocks")
+            if blocks_to_add:
+                cov_cur.executemany(
+                    f"INSERT OR IGNORE INTO {source_table} (binary_id, func_id, bb_rva) VALUES (?, ?, ?)",
+                    blocks_to_add
+                )
+                total_added += len(blocks_to_add)
+                print(f"    Added {len(blocks_to_add)} intermediate blocks")
     
     cov_conn.commit()
-    print(f"  Total intermediate blocks added: {total_added}")
+    print(f"  Total intermediate blocks added for sample {sample_name}: {total_added}")
 
 
 def build_executed_graph(cov_conn, master_conn, edges_B_table):
@@ -593,11 +579,12 @@ def build_executed_graph(cov_conn, master_conn, edges_B_table):
     print(f"  Processing {len(binaries)} binaries...")
 
     for (binary_id,) in binaries:
-        # Add CFG edges from master.db
+        # Add deterministic CFG edges (fallthrough & unconditional branches)
         master_cur.execute("""
             SELECT src_bb_rva, dst_bb_rva, COALESCE(edge_kind, 'cfg') 
             FROM cfg_edges 
             WHERE binary_id = ?
+              AND edge_kind IN ('fallthrough', 'branch_unconditional')
         """, (binary_id,))
 
         cfg_edges = []
@@ -610,7 +597,7 @@ def build_executed_graph(cov_conn, master_conn, edges_B_table):
                 "INSERT OR IGNORE INTO graph_B_edges VALUES (?, ?, ?, ?)",
                 cfg_edges
             )
-        print(f"    Binary {binary_id}: Added {len(cfg_edges)} CFG edges")
+        print(f"    Binary {binary_id}: Added {len(cfg_edges)} deterministic CFG edges")
 
         # Add direct call edges from master.db
         master_cur.execute("""
@@ -685,6 +672,29 @@ def build_executed_graph(cov_conn, master_conn, edges_B_table):
         print(f"    Successfully mapped: {mapped_edges}")
         print(f"    Skipped (endpoints not in G_B): {skipped_edges}")
 
+    # NEW: Add super-root edges to orphaned new blocks (entry points)
+    print("  Finding orphaned new blocks (indirect calls, callbacks)...")
+    cov_cur.execute("""
+        INSERT INTO graph_B_edges (binary_id, src_bb_rva, dst_bb_rva, edge_type)
+        SELECT DISTINCT bb.binary_id, -1, bb.bb_rva, 'super_root_orphan'
+        FROM bb_labels bb
+        WHERE bb.is_new = 1
+          AND bb.bb_rva NOT IN (
+              -- Exclude blocks that have incoming edges from any block
+              SELECT DISTINCT dst_bb_rva 
+              FROM graph_B_edges e
+              WHERE e.binary_id = bb.binary_id 
+                AND e.edge_type != 'super_root'
+                AND e.edge_type != 'super_root_orphan'
+          )
+    """)
+
+    orphan_count = cov_cur.execute("""
+        SELECT COUNT(*) FROM graph_B_edges 
+        WHERE edge_type = 'super_root_orphan'
+    """).fetchone()[0]
+    print(f"  Added {orphan_count} super-root edges to orphaned new blocks")
+
     cov_conn.commit()
 
     node_count = cov_cur.execute("SELECT COUNT(*) FROM graph_B_nodes").fetchone()[0]
@@ -706,6 +716,15 @@ def identify_frontier(cov_conn):
         JOIN bb_labels lbl_src ON e.binary_id = lbl_src.binary_id AND e.src_bb_rva = lbl_src.bb_rva
         JOIN bb_labels lbl_dst ON e.binary_id = lbl_dst.binary_id AND e.dst_bb_rva = lbl_dst.bb_rva
         WHERE lbl_src.in_A = 1 AND lbl_dst.is_new = 1
+          AND e.edge_type != 'super_root'  -- Only exclude regular super-root, keep orphan edges
+    """)
+    
+    # Also add orphaned new blocks as weak frontiers
+    cur.execute("""
+        INSERT INTO frontier_edges (binary_id, src_bb_rva, dst_bb_rva, edge_type)
+        SELECT binary_id, src_bb_rva, dst_bb_rva, edge_type
+        FROM graph_B_edges
+        WHERE edge_type = 'super_root_orphan'
     """)
 
     # Get all unique frontier targets
@@ -717,38 +736,52 @@ def identify_frontier(cov_conn):
     frontier_candidates = cur.fetchall()
 
     print(f"  Found {len(frontier_candidates)} frontier target candidates")
-    print(f"  Classifying as strong (A-only) or weak (A+B)...")
+    print(f"  Classifying as strong (A-only) or weak (A+B)...") 
 
     strong_count = 0
     weak_count = 0
     frontier_data = []
 
     for binary_id, bb_rva, func_id in frontier_candidates:
-        # Get all incoming edges to this frontier target
+        # Check if this is an orphaned block (only reachable from super-root)
         cur.execute("""
-            SELECT e.src_bb_rva, lbl.in_A, lbl.is_new
-            FROM graph_B_edges e
-            JOIN bb_labels lbl ON e.binary_id = lbl.binary_id AND e.src_bb_rva = lbl.bb_rva
-            WHERE e.binary_id = ? AND e.dst_bb_rva = ?
+            SELECT COUNT(*)
+            FROM graph_B_edges
+            WHERE binary_id = ? AND dst_bb_rva = ?
+              AND edge_type = 'super_root_orphan'
         """, (binary_id, bb_rva))
-
-        incoming_edges = cur.fetchall()
-
-        has_a_edge = False
-        has_new_edge = False
-
-        for src_rva, in_A, is_new in incoming_edges:
-            if in_A == 1:
-                has_a_edge = True
-            if is_new == 1:
-                has_new_edge = True
-
-        if has_a_edge and not has_new_edge:
-            frontier_type = 'strong'
-            strong_count += 1
-        else:
+        
+        if cur.fetchone()[0] > 0:
+            # Orphaned blocks are weak frontiers
             frontier_type = 'weak'
             weak_count += 1
+        else:
+            # Regular frontier classification logic
+            cur.execute("""
+                SELECT e.src_bb_rva, lbl.in_A, lbl.is_new
+                FROM graph_B_edges e
+                JOIN bb_labels lbl ON e.binary_id = lbl.binary_id AND e.src_bb_rva = lbl.bb_rva
+                WHERE e.binary_id = ? AND e.dst_bb_rva = ?
+                  AND e.edge_type NOT LIKE 'super_root%'  -- Exclude super-root edges
+            """, (binary_id, bb_rva))
+
+            incoming_edges = cur.fetchall()
+
+            has_a_edge = False
+            has_new_edge = False
+
+            for src_rva, in_A, is_new in incoming_edges:
+                if in_A == 1:
+                    has_a_edge = True
+                if is_new == 1:
+                    has_new_edge = True
+
+            if has_a_edge and not has_new_edge:
+                frontier_type = 'strong'
+                strong_count += 1
+            else:
+                frontier_type = 'weak'
+                weak_count += 1
 
         frontier_data.append((binary_id, bb_rva, func_id, frontier_type))
 
@@ -968,15 +1001,16 @@ def aggregate_scores(cov_conn, master_conn):
             NULL as src_func_name,
             bb_dst.func_id as dst_func_id,
             NULL as dst_func_name,
-            fa.unique_new_bb_count,
-            fa.shared_new_bb_count,
-            fa.attributed_new_bb_count
+            SUM(fa.unique_new_bb_count) as unique_new_bb,
+            SUM(fa.shared_new_bb_count) as shared_new_bb,
+            SUM(fa.attributed_new_bb_count) as total_new_bb
         FROM frontier_edges fe
         JOIN frontier_attribution fa 
           ON fe.binary_id = fa.binary_id AND fe.dst_bb_rva = fa.frontier_bb_rva
         JOIN bb_labels bb_src ON fe.binary_id = bb_src.binary_id AND fe.src_bb_rva = bb_src.bb_rva
         JOIN bb_labels bb_dst ON fe.binary_id = bb_dst.binary_id AND fe.dst_bb_rva = bb_dst.bb_rva
-        WHERE fe.edge_type LIKE 'call%' OR fe.edge_type LIKE 'observed%'
+        WHERE fe.edge_type NOT LIKE 'super_root%'
+        GROUP BY fe.binary_id, fe.src_bb_rva, bb_dst.func_id, bb_src.func_id
     """)
 
     cov_cur.execute("SELECT DISTINCT binary_id, src_func_id, dst_func_id FROM callsite_unlock_scores")
@@ -1103,7 +1137,10 @@ def main():
             sys.exit(1)
 
         missing_A = join_coverage_to_blocks(cov_conn, master_conn, "A", args.blocks_a, args.edges_a)
+        expand_deterministic_for_sample(cov_conn, master_conn, 'A')
+
         missing_B = join_coverage_to_blocks(cov_conn, master_conn, "B", args.blocks_b, args.edges_b)
+        expand_deterministic_for_sample(cov_conn, master_conn, 'B')
 
         missing_data = {
             "unmapped_modules": [{"module_id": m[0], "name": m[1], "sha256": m[2]} for m in unmapped],
@@ -1116,7 +1153,6 @@ def main():
         print(f"Wrote missing blocks report to {args.missing_output}")
 
         compute_diff_labels(cov_conn)
-        expand_with_deterministic_paths(cov_conn, master_conn)
         build_executed_graph(cov_conn, master_conn, args.edges_b)
         identify_frontier(cov_conn)
         compute_reachability(cov_conn)
