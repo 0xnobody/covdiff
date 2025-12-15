@@ -28,6 +28,23 @@ function setupIPC(mainWindow) {
       throw new Error(`Failed to read file: ${error.message}`);
     }
   });
+
+  // Window controls
+  ipcMain.on('window-minimize', () => {
+    mainWindow.minimize();
+  });
+
+  ipcMain.on('window-maximize', () => {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  });
+
+  ipcMain.on('window-close', () => {
+    mainWindow.close();
+  });
 }
 
 module.exports = { setupIPC };

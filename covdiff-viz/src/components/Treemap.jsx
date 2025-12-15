@@ -3,6 +3,19 @@ import * as d3 from 'd3';
 import { useDatabaseContext } from '../context/DatabaseContext';
 
 /**
+ * Calculate frontier contribution gradient (blue -> purple)
+ * @param {number} contributionPercent - Percentage of function's attribution from this BB (0-100)
+ */
+const getFrontierGradient = (contributionPercent) => {
+  // Blue (#3b82f6) for low contribution (0-20%)
+  // Purple (#8b5cf6) for high contribution (80-100%)
+  // Smooth interpolation in between
+  
+  const t = Math.min(100, Math.max(0, contributionPercent)) / 100;
+  return d3.interpolateRgb('#3b82f6', '#8b5cf6')(t);
+};
+
+/**
  * Calculate coverage percentage color with biased gradient
  */
 const getCoverageColor = (item, rawCoverageData) => {
@@ -39,9 +52,28 @@ const getCoverageColor = (item, rawCoverageData) => {
     return getCoverageGradient(coveragePercent);
   }
   
-  // For basic blocks, use status-based coloring
-  if (item.status === 'new') return '#ef4444';
-  return '#6b7280';
+  // For basic blocks, use frontier attribution gradient for frontier blocks
+  if (item.id.startsWith('bb_')) {
+    // New blocks with frontier attribution use blue->purple gradient
+    if (item.status === 'new' && item.is_frontier && item.frontier_attribution) {
+      // Get the function's total attribution to calculate this block's contribution
+      const funcData = item._functionData;
+      if (funcData && funcData.attribution && funcData.attribution.total_new_bb > 0) {
+        const blockContribution = item.frontier_attribution.total_new_bb;
+        const functionTotal = funcData.attribution.total_new_bb;
+        const contributionPercent = (blockContribution / functionTotal) * 100;
+        return getFrontierGradient(contributionPercent);
+      }
+    }
+    
+    // New blocks that are NOT frontiers are red
+    if (item.status === 'new') {
+      return '#ef4444';
+    }
+    
+    // Everything else (in_both, old, unchanged, etc.) is grey
+    return '#6b7280';
+  }
 };
 
 const getCoverageGradient = (coveragePercent) => {
@@ -221,6 +253,29 @@ const Treemap = ({ data, onSelect, selectedId, title, onFilterClick, legendType 
               <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
                 <div style={{ width: '12px', height: '12px', backgroundColor: '#b91c1c', borderRadius: '2px' }}></div>
                 <span>100%</span>
+              </div>
+            </div>
+          ) : legendType === 'frontier' ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '10px', color: '#64748b' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>  
+                <div style={{ width: '12px', height: '12px', backgroundColor: '#3b82f6', borderRadius: '2px' }}></div>
+                <span>Low</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                <div style={{ width: '12px', height: '12px', backgroundColor: '#6366f1', borderRadius: '2px' }}></div>
+                <span>Med</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                <div style={{ width: '12px', height: '12px', backgroundColor: '#8b5cf6', borderRadius: '2px' }}></div>
+                <span>High</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                <div style={{ width: '12px', height: '12px', backgroundColor: '#ef4444', borderRadius: '2px' }}></div>
+                <span>Non-frontier</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                <div style={{ width: '12px', height: '12px', backgroundColor: '#6b7280', borderRadius: '2px' }}></div>
+                <span>Old</span>
               </div>
             </div>
           ) : (

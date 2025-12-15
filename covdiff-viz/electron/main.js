@@ -50,6 +50,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
+    frame: false, // Remove default frame to use custom title bar
+    icon: path.join(__dirname, '../public/favicon.ico'),
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false, // Enable direct Node.js access in renderer

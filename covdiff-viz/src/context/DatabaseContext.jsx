@@ -14,30 +14,58 @@ export const DatabaseProvider = ({ children }) => {
   const [covdiffFilePath, setCovdiffFilePath] = useState(null);
   const [coverageData, setCoverageData] = useState(null);
   const [rawCoverageData, setRawCoverageData] = useState(null); // Store original JSON
+  const fileInputRef = React.useRef(null);
 
   const openCovdiffFile = useCallback(async () => {
-    const result = await window.electron.openFileDialog({
-      title: 'Open Coverage Diff File',
-      filters: [{ name: 'Coverage Diff', extensions: ['covdiff.json', 'json'] }],
-      properties: ['openFile']
-    });
+    // Check if running in Electron
+    const isElectron = window.electron && window.electron.openFileDialog !== undefined;
+    
+    if (isElectron) {
+      // Electron environment - use native file dialog
+      const result = await window.electron.openFileDialog({
+        title: 'Open Coverage Diff File',
+        filters: [{ name: 'Coverage Diff', extensions: ['covdiff.json', 'json'] }],
+        properties: ['openFile']
+      });
 
-    if (!result.canceled && result.filePaths.length > 0) {
-      const filePath = result.filePaths[0];
-      setCovdiffFilePath(filePath);
-      
-      // Read and process the file
-      await loadCovdiffFile(filePath);
+      if (!result.canceled && result.filePaths.length > 0) {
+        const filePath = result.filePaths[0];
+        setCovdiffFilePath(filePath);
+        
+        // Read and process the file
+        const fileContents = await window.electron.readFile(filePath);
+        await processCovdiffData(fileContents, filePath);
+      }
+    } else {
+      // Web environment - use HTML file input
+      if (!fileInputRef.current) {
+        // Create file input if it doesn't exist
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.covdiff.json,.json';
+        input.onchange = async (e) => {
+          const file = e.target.files[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+              await processCovdiffData(event.target.result, file.name);
+            };
+            reader.readAsText(file);
+          }
+        };
+        fileInputRef.current = input;
+      }
+      fileInputRef.current.click();
     }
   }, []);
 
-  const loadCovdiffFile = useCallback(async (filePath) => {
+  const processCovdiffData = useCallback(async (fileContents, fileName) => {
     try {
-      // Read the file contents
-      const fileContents = await window.electron.readFile(filePath);
       const jsonData = JSON.parse(fileContents);
       
       console.log('Loaded .covdiff.json file:', jsonData);
+      
+      setCovdiffFilePath(fileName);
       
       // Store raw data for call graph
       setRawCoverageData(jsonData);
@@ -51,6 +79,17 @@ export const DatabaseProvider = ({ children }) => {
       alert('Failed to load coverage file: ' + error.message);
     }
   }, []);
+
+  const loadCovdiffFile = useCallback(async (filePath) => {
+    try {
+      // Read the file contents
+      const fileContents = await window.electron.readFile(filePath);
+      await processCovdiffData(fileContents, filePath);
+    } catch (error) {
+      console.error('Error loading covdiff file:', error);
+      alert('Failed to load coverage file: ' + error.message);
+    }
+  }, [processCovdiffData]);
 
   const transformCovdiffData = (jsonData) => {
     const modules = [];

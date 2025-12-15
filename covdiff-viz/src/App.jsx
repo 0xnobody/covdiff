@@ -9,6 +9,7 @@ import FunctionTreemap from './components/FunctionTreemap';
 import BasicBlockTreemap from './components/BasicBlockTreemap';
 import CallGraph from './components/CallGraph';
 import DetailPane from './components/DetailPane';
+import MenuBar from './components/MenuBar';
 import './electron-bridge';
 
 // Define the layout model
@@ -121,6 +122,7 @@ function App() {
       <FilterProvider>
         <AppProvider>
           <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column' }}>
+            <MenuBar />
             <div style={{ flex: 1, overflow: 'hidden', minHeight: 0, position: 'relative' }}>
               <Layout model={model} factory={factory} />
             </div>

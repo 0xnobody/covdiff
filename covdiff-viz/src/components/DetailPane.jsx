@@ -7,14 +7,32 @@ const DetailPane = () => {
 
   const renderDetails = () => {
     if (selectedBasicBlock) {
+      const uniqueNewBB = selectedBasicBlock.frontier_attribution?.unique_new_bb || 0;
+      const sharedNewBB = selectedBasicBlock.frontier_attribution?.shared_new_bb || 0;
+      const totalNewBB = selectedBasicBlock.frontier_attribution?.total_new_bb || 0;
+      const frontierType = selectedBasicBlock.frontier_type;
+      
       return (
         <div>
-          <div style={{ display: 'grid', gap: '8px' }}>
-            <DetailRow label="RVA" value={selectedBasicBlock.bb_rva || selectedBasicBlock.rva} isCode />
-            <DetailRow label="Function Name" value={selectedFunction?.name || 'N/A'} isCode />
-            <DetailRow label="Size" value={formatSize(selectedBasicBlock.size)} />
-            <DetailRow label="Status" value={selectedBasicBlock.status} status={selectedBasicBlock.status} />
-            <DetailRow label="Frontier Type" value={selectedBasicBlock.frontier_type || 'N/A'} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '48px', alignItems: 'start' }}>
+            <div style={{ display: 'grid', gap: '8px', minWidth: '300px' }}>
+              <DetailRow label="RVA" value={selectedBasicBlock.bb_rva || selectedBasicBlock.rva} isCode />
+              <DetailRow label="Function Name" value={selectedFunction?.name || 'N/A'} isCode />
+              <DetailRow label="Size" value={formatSize(selectedBasicBlock.size)} />
+              <DetailRow label="Status" value={selectedBasicBlock.status} status={selectedBasicBlock.status} />
+              <DetailRow label="Frontier Type" value={frontierType || 'N/A'} frontierType={frontierType} />
+            </div>
+            {totalNewBB > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: '250px' }}>
+                <CompositionChart
+                  title="New BB Attribution"
+                  data={[
+                    { label: 'Unique', value: uniqueNewBB, color: '#06b6d4' },
+                    { label: 'Shared', value: sharedNewBB, color: '#a855f7' }
+                  ]}
+                />
+              </div>
+            )}
           </div>
         </div>
       );
@@ -43,16 +61,16 @@ const DetailPane = () => {
               <CompositionChart
                 title="Newly-Reachable BB Composition"
                 data={[
-                  { label: 'Unique', value: uniqueNewBB, color: '#3b82f6' },
-                  { label: 'Shared', value: sharedNewBB, color: '#8b5cf6' }
+                  { label: 'Unique', value: uniqueNewBB, color: '#06b6d4' },
+                  { label: 'Shared', value: sharedNewBB, color: '#a855f7' }
                 ]}
               />
               <CompositionChart
-                title="Frontier Composition"
+                title="Basic Block Composition"
                 data={[
-                  { label: 'Strong', value: strongFrontierCount, color: '#10b981' },
-                  { label: 'Weak', value: weakFrontierCount, color: '#f59e0b' },
-                  { label: 'Non-frontier', value: totalBasicBlocks - frontierCount, color: '#d1d5db' }
+                  { label: 'Strong Frontier', value: strongFrontierCount, color: '#059669' },
+                  { label: 'Weak Frontier', value: weakFrontierCount, color: '#d97706' },
+                  { label: 'Non-frontier', value: totalBasicBlocks - frontierCount, color: '#9ca3af' }
                 ]}
               />
             </div>
@@ -62,12 +80,42 @@ const DetailPane = () => {
     }
 
     if (selectedModule) {
+      const stats = selectedModule.statistics || {};
+      const newFunctions = stats.new_functions || 0;
+      const changedFunctions = stats.changed_functions || 0;
+      const oldFunctions = stats.old_functions || 0;
+      const totalBlocks = stats.total_blocks || 0;
+      const newBlocks = stats.new_blocks || 0;
+      const blocksInA = stats.blocks_in_A || 0;
+      const blocksInB = stats.blocks_in_B || 0;
+      
       return (
         <div>
-          <div style={{ display: 'grid', gap: '8px' }}>
-            <DetailRow label="Name" value={selectedModule.name} isCode />
-            <DetailRow label="Size" value={formatSize(selectedModule.size)} />
-            <DetailRow label="Status" value={selectedModule.status} status={selectedModule.status} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '48px', alignItems: 'start' }}>
+            <div style={{ display: 'grid', gap: '8px', minWidth: '300px' }}>
+              <DetailRow label="Name" value={selectedModule.name} isCode />
+              <DetailRow label="Size" value={formatSize(selectedModule.size)} />
+              <DetailRow label="Status" value={selectedModule.status} status={selectedModule.status} />
+            </div>
+            {stats && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: '250px' }}>
+                <CompositionChart
+                  title="Function Composition"
+                  data={[
+                    { label: 'New', value: newFunctions, color: '#ef4444' },
+                    { label: 'Changed', value: changedFunctions, color: '#f97316' },
+                    { label: 'Unchanged', value: oldFunctions, color: '#6b7280' }
+                  ]}
+                />
+                <CompositionChart
+                  title="Block Coverage"
+                  data={[
+                    { label: 'New (B only)', value: newBlocks, color: '#ef4444' },
+                    { label: 'Existing (in both)', value: totalBlocks - newBlocks, color: '#22c55e' }
+                  ]}
+                />
+              </div>
+            )}
           </div>
         </div>
       );
@@ -166,13 +214,27 @@ const CompositionChart = ({ title, data }) => {
   );
 };
 
-const DetailRow = ({ label, value, status, isCode }) => {
+const DetailRow = ({ label, value, status, frontierType, isCode }) => {
   const statusColors = {
     'new': '#ef4444',
     'changed': '#f97316',
     'unchanged': '#22c55e'
   };
+  
+  const frontierTypeColors = {
+    'strong_frontier': '#059669',
+    'weak_frontier': '#d97706',
+    'non_frontier': '#9ca3af',
+    // Alternative naming conventions
+    'strong': '#059669',
+    'weak': '#d97706',
+    'non-frontier': '#9ca3af'
+  };
 
+  const displayColor = frontierType 
+    ? frontierTypeColors[frontierType] || '#1f2937'
+    : (status ? statusColors[status] || '#1f2937' : '#1f2937');
+  
   return (
     <div style={{ display: 'flex', fontSize: '14px' }}>
       <span style={{ 
@@ -183,8 +245,8 @@ const DetailRow = ({ label, value, status, isCode }) => {
         {label}:
       </span>
       <span style={{ 
-        color: status ? statusColors[status] || '#1f2937' : '#1f2937',
-        fontWeight: status ? '600' : '400',
+        color: displayColor,
+        fontWeight: (status || frontierType) ? '600' : '400',
         fontFamily: isCode ? 'monospace' : 'inherit',
         backgroundColor: isCode ? '#f3f4f6' : 'transparent',
         padding: isCode ? '2px 6px' : '0',

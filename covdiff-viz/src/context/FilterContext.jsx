@@ -27,10 +27,11 @@ export const FilterProvider = ({ children }) => {
   });
   const [functionMinSize, setFunctionMinSize] = useState(100);
 
-  // Basic block filters (statuses: 'new' or 'in_both')
-  const [bbStatusFilters, setBbStatusFilters] = useState({
-    new: true,
-    in_both: true  // Covered in both A and B
+  // Basic block filters - category-based (visual categories)
+  const [bbCategoryFilters, setBbCategoryFilters] = useState({
+    new: true,       // Red - non-frontier new blocks
+    frontier: true,  // Blue->Purple gradient - frontier blocks
+    old: true        // Grey - old blocks (in_both status)
   });
   const [bbMinSize, setBbMinSize] = useState(0);
 
@@ -48,8 +49,8 @@ export const FilterProvider = ({ children }) => {
     setFunctionStatusFilters,
     functionMinSize,
     setFunctionMinSize,
-    bbStatusFilters,
-    setBbStatusFilters,
+    bbCategoryFilters,
+    setBbCategoryFilters,
     bbMinSize,
     setBbMinSize,
     showTransitiveEdges,

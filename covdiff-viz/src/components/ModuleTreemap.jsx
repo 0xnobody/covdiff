@@ -42,7 +42,7 @@ const ModuleTreemap = () => {
         color: '#64748b',
         fontSize: '14px'
       }}>
-        No coverage data loaded. Open a coverage diff to visualize.
+        Open a coverage diff to visualize.
       </div>
     );
   }

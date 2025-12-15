@@ -38,6 +38,23 @@ const getNodeSize = (value, min, max) => {
 };
 
 /**
+ * Get color based on frontier count percentage (for frontier coloring mode)
+ * Uses blue-to-purple gradient based on percentile of frontier count
+ */
+const getColorByFrontier = (func, minFrontier, maxFrontier) => {
+  const frontierCount = func.attribution?.frontier_count || 0;
+  
+  if (frontierCount === 0) return '#6b7280'; // gray for no frontier
+  if (maxFrontier === minFrontier) return '#8b5cf6'; // single value - purple
+  
+  // Calculate percentage based on min/max
+  const percentage = (frontierCount - minFrontier) / (maxFrontier - minFrontier);
+  
+  // Interpolate from blue (#3b82f6) to purple (#8b5cf6)
+  return d3.interpolateRgb('#3b82f6', '#8b5cf6')(percentage);
+};
+
+/**
  * Get color based on coverage percentage (newly covered blocks / total blocks)
  * Uses orange-to-red gradient, biased for small percentages (5-10%)
  */
@@ -83,9 +100,12 @@ const getColorByCoverage = (func) => {
 };
 
 /**
- * Determine function node color based on coverage percentage
+ * Determine function node color based on mode (coverage or frontier)
  */
-const getFunctionColor = (func) => {
+const getFunctionColor = (func, useFrontierColor = false, minFrontier = 0, maxFrontier = 0) => {
+  if (useFrontierColor) {
+    return getColorByFrontier(func, minFrontier, maxFrontier);
+  }
   return getColorByCoverage(func);
 };
 
@@ -108,16 +128,29 @@ const getFrontierBorderStyle = (frontierCount, strongCount, weakCount) => {
  * @param {number} minFunctionSize - Minimum function size filter
  * @param {number} minNewBBCount - Minimum new BB count filter
  * @param {boolean} showUnconnected - Whether to show unconnected nodes
+ * @param {boolean} showUnchanged - Whether to include unchanged functions
+ * @param {boolean} useFrontierColor - Whether to use frontier count coloring instead of coverage %
  */
-const buildFunctionGraph = (module, maxTransitiveDistance = 0, minFunctionSize = 0, minNewBBCount = 0, showUnconnected = false) => {
+const buildFunctionGraph = (module, maxTransitiveDistance = 0, minFunctionSize = 0, minNewBBCount = 0, showUnconnected = false, showUnchanged = false, useFrontierColor = false) => {
   const elements = [];
   
-  // Filter to only new and changed functions, then apply size and BB count filters
-  const functions = module.functions.filter(f => 
-    (f.status === 'new' || f.status === 'changed') &&
-    f.func_size >= minFunctionSize &&
-    f.attribution.total_new_bb >= minNewBBCount
-  );
+  // Filter functions based on status and other criteria
+  const functions = module.functions.filter(f => {
+    // Status filter
+    const statusMatch = showUnchanged 
+      ? (f.status === 'new' || f.status === 'changed' || f.status === 'old')
+      : (f.status === 'new' || f.status === 'changed');
+    
+    if (!statusMatch) return false;
+    
+    // Size filter
+    if (f.func_size < minFunctionSize) return false;
+    
+    // New BB count filter (only for new/changed functions)
+    if (f.status !== 'old' && f.attribution.total_new_bb < minNewBBCount) return false;
+    
+    return true;
+  });
   
   if (functions.length === 0) {
     return elements;
@@ -128,10 +161,15 @@ const buildFunctionGraph = (module, maxTransitiveDistance = 0, minFunctionSize =
   const minNewBB = Math.min(...totalNewBBValues);
   const maxNewBB = Math.max(...totalNewBBValues);
   
+  // Calculate min/max for frontier count coloring
+  const frontierCounts = functions.map(f => f.attribution?.frontier_count || 0);
+  const minFrontier = Math.min(...frontierCounts);
+  const maxFrontier = Math.max(...frontierCounts);
+  
   // Create function nodes only
   functions.forEach((func) => {
     const nodeSize = getNodeSize(func.attribution.total_new_bb, minNewBB, maxNewBB);
-    const color = getFunctionColor(func);
+    const color = getFunctionColor(func, useFrontierColor, minFrontier, maxFrontier);
     const shape = func.is_indirectly_called ? 'diamond' : 'ellipse';
     const border = getFrontierBorderStyle(
       func.attribution.frontier_count,
@@ -210,8 +248,11 @@ const buildFunctionGraph = (module, maxTransitiveDistance = 0, minFunctionSize =
         }
       }
       
-      // Continue traversal (limit depth to maxTransitiveDistance for transitive edges)
-      if (maxTransitiveDistance > 0 && distance < maxTransitiveDistance) {
+      // Continue traversal
+      // Always traverse at least distance 1 to find direct edges
+      // If maxTransitiveDistance > 0, continue up to that distance for transitive edges
+      const maxDepth = maxTransitiveDistance > 0 ? maxTransitiveDistance : 1;
+      if (distance < maxDepth) {
         const callees = allFunctionCalls.get(funcId);
         if (callees) {
           callees.forEach(calleeId => {
@@ -391,12 +432,16 @@ const CallGraph = () => {
   const [localMinFunctionSize, setLocalMinFunctionSize] = React.useState(128);
   const [localMinNewBBCount, setLocalMinNewBBCount] = React.useState(5);
   const [localShowUnconnected, setLocalShowUnconnected] = React.useState(false);
+  const [localShowUnchanged, setLocalShowUnchanged] = React.useState(false);
+  const [localUseFrontierColor, setLocalUseFrontierColor] = React.useState(false);
   
   // Applied filter values (triggers graph rebuild)
   const [appliedTransitiveDistance, setAppliedTransitiveDistance] = React.useState(3);
   const [appliedMinFunctionSize, setAppliedMinFunctionSize] = React.useState(128);
   const [appliedMinNewBBCount, setAppliedMinNewBBCount] = React.useState(5);
   const [appliedShowUnconnected, setAppliedShowUnconnected] = React.useState(false);
+  const [appliedShowUnchanged, setAppliedShowUnchanged] = React.useState(false);
+  const [appliedUseFrontierColor, setAppliedUseFrontierColor] = React.useState(false);
   
   // Loading state
   const [isLoading, setIsLoading] = React.useState(false);
@@ -412,6 +457,8 @@ const CallGraph = () => {
     setAppliedMinFunctionSize(localMinFunctionSize);
     setAppliedMinNewBBCount(localMinNewBBCount);
     setAppliedShowUnconnected(localShowUnconnected);
+    setAppliedShowUnchanged(localShowUnchanged);
+    setAppliedUseFrontierColor(localUseFrontierColor);
   };
   
   useEffect(() => {
@@ -432,7 +479,7 @@ const CallGraph = () => {
     
     // Use setTimeout to prevent blocking the UI
     const timeoutId = setTimeout(() => {
-      const elements = buildFunctionGraph(module, appliedTransitiveDistance, appliedMinFunctionSize, appliedMinNewBBCount, appliedShowUnconnected);
+      const elements = buildFunctionGraph(module, appliedTransitiveDistance, appliedMinFunctionSize, appliedMinNewBBCount, appliedShowUnconnected, appliedShowUnchanged, appliedUseFrontierColor);
       
       if (elements.length === 0) {
         console.warn('No new or changed functions found in module');
@@ -578,7 +625,7 @@ const CallGraph = () => {
         cyRef.current = null;
       }
     };
-  }, [rawCoverageData, selectedModule, appliedTransitiveDistance, appliedMinFunctionSize, appliedMinNewBBCount, appliedShowUnconnected]);
+  }, [rawCoverageData, selectedModule, appliedTransitiveDistance, appliedMinFunctionSize, appliedMinNewBBCount, appliedShowUnconnected, appliedShowUnchanged, appliedUseFrontierColor]);
   
   // React to function selection from treemap: zoom to node
   useEffect(() => {
@@ -799,6 +846,40 @@ const CallGraph = () => {
               />
               Show unconnected nodes
             </label>
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              cursor: 'pointer',
+              marginBottom: '6px',
+              fontSize: '11px',
+              userSelect: 'none'
+            }}>
+              <input
+                type="checkbox"
+                checked={localShowUnchanged}
+                onChange={(e) => setLocalShowUnchanged(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              Show unchanged functions
+            </label>
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              cursor: 'pointer',
+              marginBottom: '6px',
+              fontSize: '11px',
+              userSelect: 'none'
+            }}>
+              <input
+                type="checkbox"
+                checked={localUseFrontierColor}
+                onChange={(e) => setLocalUseFrontierColor(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              Color by frontier count
+            </label>
             <button
               onClick={handleApplyFilters}
               disabled={isLoading}
@@ -863,28 +944,55 @@ const CallGraph = () => {
           <>
             {/* Colors */}
             <div style={{ marginBottom: '6px' }}>
-              <div style={{ fontWeight: '600', fontSize: '9px', color: '#6b7280', marginBottom: '3px' }}>Coverage %</div>
+              <div style={{ fontWeight: '600', fontSize: '9px', color: '#6b7280', marginBottom: '3px' }}>
+                {appliedUseFrontierColor ? 'Frontier Count' : 'Coverage %'}
+              </div>
               <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
-                  <div style={{ width: '10px', height: '10px', backgroundColor: '#6b7280', borderRadius: '2px', marginRight: '4px', flexShrink: 0 }}></div>
-                  <span style={{ color: '#374151' }}>0% - No new coverage</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
-                  <div style={{ width: '10px', height: '10px', backgroundColor: '#fb923c', borderRadius: '2px', marginRight: '4px', flexShrink: 0 }}></div>
-                  <span style={{ color: '#374151' }}>&lt;5% - Low</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
-                  <div style={{ width: '10px', height: '10px', backgroundColor: '#f97316', borderRadius: '2px', marginRight: '4px', flexShrink: 0 }}></div>
-                  <span style={{ color: '#374151' }}>~10% - Typical</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
-                  <div style={{ width: '10px', height: '10px', backgroundColor: '#dc2626', borderRadius: '2px', marginRight: '4px', flexShrink: 0 }}></div>
-                  <span style={{ color: '#374151' }}>25%+ - High</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
-                  <div style={{ width: '10px', height: '10px', backgroundColor: '#b91c1c', borderRadius: '2px', marginRight: '4px', flexShrink: 0 }}></div>
-                  <span style={{ color: '#374151' }}>100% - Complete</span>
-                </div>
+                {appliedUseFrontierColor ? (
+                  // Frontier count legend
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
+                      <div style={{ width: '10px', height: '10px', backgroundColor: '#6b7280', borderRadius: '2px', marginRight: '4px', flexShrink: 0 }}></div>
+                      <span style={{ color: '#374151' }}>No frontier</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
+                      <div style={{ width: '10px', height: '10px', backgroundColor: '#3b82f6', borderRadius: '2px', marginRight: '4px', flexShrink: 0 }}></div>
+                      <span style={{ color: '#374151' }}>Low frontier count</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
+                      <div style={{ width: '10px', height: '10px', background: 'linear-gradient(to right, #3b82f6, #8b5cf6)', borderRadius: '2px', marginRight: '4px', flexShrink: 0 }}></div>
+                      <span style={{ color: '#374151' }}>Medium frontier count</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
+                      <div style={{ width: '10px', height: '10px', backgroundColor: '#8b5cf6', borderRadius: '2px', marginRight: '4px', flexShrink: 0 }}></div>
+                      <span style={{ color: '#374151' }}>High frontier count</span>
+                    </div>
+                  </>
+                ) : (
+                  // Coverage % legend
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
+                      <div style={{ width: '10px', height: '10px', backgroundColor: '#6b7280', borderRadius: '2px', marginRight: '4px', flexShrink: 0 }}></div>
+                      <span style={{ color: '#374151' }}>0% - No new coverage</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
+                      <div style={{ width: '10px', height: '10px', backgroundColor: '#fb923c', borderRadius: '2px', marginRight: '4px', flexShrink: 0 }}></div>
+                      <span style={{ color: '#374151' }}>&lt;5% - Low</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
+                      <div style={{ width: '10px', height: '10px', backgroundColor: '#f97316', borderRadius: '2px', marginRight: '4px', flexShrink: 0 }}></div>
+                      <span style={{ color: '#374151' }}>~10% - Typical</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
+                      <div style={{ width: '10px', height: '10px', backgroundColor: '#dc2626', borderRadius: '2px', marginRight: '4px', flexShrink: 0 }}></div>
+                      <span style={{ color: '#374151' }}>25%+ - High</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '2px' }}>
+                      <div style={{ width: '10px', height: '10px', backgroundColor: '#b91c1c', borderRadius: '2px', marginRight: '4px', flexShrink: 0 }}></div>
+                      <span style={{ color: '#374151' }}>100% - Complete</span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
         

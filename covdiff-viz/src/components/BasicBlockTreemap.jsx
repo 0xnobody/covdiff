@@ -8,10 +8,10 @@ import { applyFilters } from '../utils/filterUtils';
 
 const BasicBlockTreemap = () => {
   const { selectedFunction, selectedBasicBlock, setSelectedBasicBlock } = useAppContext();
-  const { coverageData } = useDatabaseContext();
+  const { rawCoverageData } = useDatabaseContext();
   const { 
-    bbStatusFilters, 
-    setBbStatusFilters, 
+    bbCategoryFilters, 
+    setBbCategoryFilters, 
     bbMinSize, 
     setBbMinSize 
   } = useFilterContext();
@@ -23,14 +23,14 @@ const BasicBlockTreemap = () => {
     setSelectedBasicBlock(bb);
   };
 
-  const handleStatusChange = (status, checked) => {
-    setBbStatusFilters({
-      ...bbStatusFilters,
-      [status]: checked
+  const handleCategoryChange = (category, checked) => {
+    setBbCategoryFilters({
+      ...bbCategoryFilters,
+      [category]: checked
     });
   };
 
-  if (!coverageData) {
+  if (!rawCoverageData) {
     return (
       <div style={{ 
         width: '100%', 
@@ -46,9 +46,43 @@ const BasicBlockTreemap = () => {
     );
   }
 
-  const basicBlocks = selectedFunction 
-    ? coverageData.basicBlocks.filter(bb => bb.functionId === selectedFunction.id)
-    : [];
+  // Get basic blocks from the selected function's raw data
+  const basicBlocks = selectedFunction?._rawData?.blocks || [];
+
+  // Convert to treemap format with proper IDs and attach function data
+  const basicBlocksWithFunctionData = basicBlocks.map((bb, index) => ({
+    id: `bb_${selectedFunction.func_id}_${index}`,
+    name: bb.bb_rva,
+    size: bb.bb_size,
+    status: bb.status,
+    bb_rva: bb.bb_rva,
+    bb_start_va: bb.bb_start_va,
+    bb_end_va: bb.bb_end_va,
+    is_frontier: bb.is_frontier,
+    frontier_type: bb.frontier_type,
+    frontier_attribution: bb.frontier_attribution,
+    attribution: bb.attribution,
+    _functionData: selectedFunction
+  }));
+
+  // Apply category-based filtering
+  const filteredBasicBlocks = basicBlocksWithFunctionData.filter(bb => {
+    // Check min size
+    if (bb.size < bbMinSize) return false;
+    
+    // Determine category
+    let category;
+    if (bb.status === 'new' && bb.is_frontier) {
+      category = 'frontier';
+    } else if (bb.status === 'new') {
+      category = 'new';
+    } else {
+      category = 'old';
+    }
+    
+    // Check if category is enabled
+    return bbCategoryFilters[category];
+  });
 
   if (!selectedFunction) {
     return (
@@ -66,8 +100,6 @@ const BasicBlockTreemap = () => {
     );
   }
 
-  const filteredBasicBlocks = applyFilters(basicBlocks, bbStatusFilters, bbMinSize);
-
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <Treemap
@@ -76,15 +108,15 @@ const BasicBlockTreemap = () => {
         selectedId={selectedBasicBlock?.id}
         title="Basic Blocks"
         onFilterClick={() => setIsFilterOpen(!isFilterOpen)}
-        legendType="status"
+        legendType="frontier"
       />
       <FilterControls
-        statusFilters={bbStatusFilters}
-        onStatusChange={handleStatusChange}
+        statusFilters={bbCategoryFilters}
+        onStatusChange={handleCategoryChange}
         minSize={bbMinSize}
         onMinSizeChange={setBbMinSize}
-        availableStatuses={['new', 'in_both']}
-        statusLabels={{ new: 'new', in_both: 'old' }}
+        availableStatuses={['new', 'frontier', 'old']}
+        statusLabels={{ new: 'New', frontier: 'Frontier', old: 'Old' }}
         isOpen={isFilterOpen}
         onClose={() => setIsFilterOpen(false)}
         buttonRef={filterButtonRef}

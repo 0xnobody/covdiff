@@ -83,12 +83,22 @@
   color: #9a3412;
 }
 
+.status-label.status-frontier {
+  background: linear-gradient(to right, #3b82f6, #8b5cf6);
+  color: #ffffff;
+}
+
 .status-label.status-old {
   background-color: #e5e7eb;
   color: #374151;
 }
 
 .status-label.status-in_both {
+  background-color: #e5e7eb;
+  color: #374151;
+}
+
+.status-label.status-unchanged {
   background-color: #e5e7eb;
   color: #374151;
 }

@@ -25,6 +25,11 @@ if (typeof window !== 'undefined' && window.require) {
     // Remove listeners
     removeMenuOpenCovdiffFile: (callback) => {
       ipcRenderer.removeListener('menu:openCovdiffFile', callback);
+    },
+    
+    // Window controls
+    send: (channel, ...args) => {
+      ipcRenderer.send(channel, ...args);
     }
   };
 } else {
@@ -35,6 +40,7 @@ if (typeof window !== 'undefined' && window.require) {
     fileExists: async () => false,
     readFile: async () => '',
     onMenuOpenCovdiffFile: () => {},
-    removeMenuOpenCovdiffFile: () => {}
+    removeMenuOpenCovdiffFile: () => {},
+    send: () => {}
   };
 }
