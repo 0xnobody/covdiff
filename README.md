@@ -1,5 +1,5 @@
 <p align="center">
-<img src="logo.png" alt="Alt Text" width="200">
+<img src="logo.png" alt="covdiff logo" width="200"/>
 </p>
 
 # covdiff
@@ -8,6 +8,12 @@ Interactive fuzzer coverage diff visualization dashboard.
 For more information, read [the paper](covdiff.pdf).
 
 🔗 **Live Demo:** https://0xnobody.github.io/covdiff/
+
+## Screenshot
+
+<p align="center">
+<img src="ss.png" alt="covdiff screenshot" height="400"/>
+</p>
 
 ## Features
 
