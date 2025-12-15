@@ -78,6 +78,7 @@ const FunctionTreemap = () => {
         selectedId={selectedFunction?.id}
         title="Functions"
         onFilterClick={() => setIsFilterOpen(!isFilterOpen)}
+        showSizeLabels={false}
       />
       <FilterControls
         statusFilters={functionStatusFilters}

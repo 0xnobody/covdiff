@@ -109,6 +109,7 @@ const BasicBlockTreemap = () => {
         title="Basic Blocks"
         onFilterClick={() => setIsFilterOpen(!isFilterOpen)}
         legendType="frontier"
+        showSizeLabels={false}
       />
       <FilterControls
         statusFilters={bbCategoryFilters}

@@ -95,7 +95,7 @@ const getCoverageGradient = (coveragePercent) => {
   }
 };
 
-const Treemap = ({ data, onSelect, selectedId, title, onFilterClick, legendType = 'coverage' }) => {
+const Treemap = ({ data, onSelect, selectedId, title, onFilterClick, legendType = 'coverage', showSizeLabels = true }) => {
   const svgRef = useRef();
   const containerRef = useRef();
   const { rawCoverageData } = useDatabaseContext();
@@ -208,32 +208,34 @@ const Treemap = ({ data, onSelect, selectedId, title, onFilterClick, legendType 
         }
       });
 
-    // Add size labels
-    cell.append('text')
-      .attr('x', 4)
-      .attr('y', 28)
-      .text(d => `${(d.data.size / 1024).toFixed(1)}KB`)
-      .attr('font-size', '9px')
-      .attr('fill', '#e5e7eb')
-      .style('pointer-events', 'none');
+    // Add size labels (only for modules when showSizeLabels is true)
+    if (showSizeLabels) {
+      cell.append('text')
+        .attr('x', 4)
+        .attr('y', 28)
+        .text(d => `${(d.data.size / 1024).toFixed(1)}KB`)
+        .attr('font-size', '9px')
+        .attr('fill', '#e5e7eb')
+        .style('pointer-events', 'none');
+    }
 
-  }, [data, selectedId, onSelect, rawCoverageData]);
+  }, [data, selectedId, onSelect, rawCoverageData, showSizeLabels]);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
+        justifyContent: 'flex-end',
         padding: '8px 12px',
         borderBottom: '1px solid #e2e8f0',
         backgroundColor: '#f8fafc',
         flexShrink: 0
       }}>
-        <h3 style={{ margin: 0, fontSize: '14px', fontWeight: '600', color: '#475569' }}>{title}</h3>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           {legendType === 'coverage' ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '10px', color: '#64748b' }}>
+              <span style={{ fontWeight: '600', marginRight: '4px' }}>Color:</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
                 <div style={{ width: '12px', height: '12px', backgroundColor: '#6b7280', borderRadius: '2px' }}></div>
                 <span>0%</span>
@@ -254,9 +256,11 @@ const Treemap = ({ data, onSelect, selectedId, title, onFilterClick, legendType 
                 <div style={{ width: '12px', height: '12px', backgroundColor: '#b91c1c', borderRadius: '2px' }}></div>
                 <span>100%</span>
               </div>
+              <span style={{ marginLeft: '8px', borderLeft: '1px solid #cbd5e1', paddingLeft: '8px' }}>Size: no. bytes</span>
             </div>
           ) : legendType === 'frontier' ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '10px', color: '#64748b' }}>
+              <span style={{ fontWeight: '600', marginRight: '4px' }}>Color:</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>  
                 <div style={{ width: '12px', height: '12px', backgroundColor: '#3b82f6', borderRadius: '2px' }}></div>
                 <span>Low</span>
@@ -277,6 +281,7 @@ const Treemap = ({ data, onSelect, selectedId, title, onFilterClick, legendType 
                 <div style={{ width: '12px', height: '12px', backgroundColor: '#6b7280', borderRadius: '2px' }}></div>
                 <span>Old</span>
               </div>
+              <span style={{ marginLeft: '8px', borderLeft: '1px solid #cbd5e1', paddingLeft: '8px' }}>Size: no. bytes</span>
             </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '10px', color: '#64748b' }}>

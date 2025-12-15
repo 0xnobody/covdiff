@@ -111,7 +111,7 @@ const DetailPane = () => {
                   title="Block Coverage"
                   data={[
                     { label: 'New (B only)', value: newBlocks, color: '#ef4444' },
-                    { label: 'Existing (in both)', value: totalBlocks - newBlocks, color: '#22c55e' }
+                    { label: 'Existing (in both)', value: totalBlocks - newBlocks, color: '#6b7280' }
                   ]}
                 />
               </div>
