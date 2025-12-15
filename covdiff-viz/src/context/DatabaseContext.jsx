@@ -16,9 +16,30 @@ export const DatabaseProvider = ({ children }) => {
   const [rawCoverageData, setRawCoverageData] = useState(null); // Store original JSON
   const fileInputRef = React.useRef(null);
 
+  const processCovdiffData = useCallback(async (fileContents, fileName) => {
+    try {
+      const jsonData = JSON.parse(fileContents);
+      
+      console.log('Loaded .covdiff.json file:', jsonData);
+      
+      setCovdiffFilePath(fileName);
+      
+      // Store raw data for call graph
+      setRawCoverageData(jsonData);
+      
+      // Transform the data to visualization format for treemaps
+      const transformedData = transformCovdiffData(jsonData);
+      setCoverageData(transformedData);
+      
+    } catch (error) {
+      console.error('Error loading covdiff file:', error);
+      alert('Failed to load coverage file: ' + error.message);
+    }
+  }, []);
+
   const openCovdiffFile = useCallback(async () => {
     // Check if running in Electron
-    const isElectron = window.electron && window.electron.openFileDialog !== undefined;
+    const isElectron = window.electron && typeof window.electron.openFileDialog === 'function';
     
     if (isElectron) {
       // Electron environment - use native file dialog
@@ -55,29 +76,11 @@ export const DatabaseProvider = ({ children }) => {
         };
         fileInputRef.current = input;
       }
+      // Reset the value to allow selecting the same file again
+      fileInputRef.current.value = '';
       fileInputRef.current.click();
     }
-  }, []);
-
-  const processCovdiffData = useCallback(async (fileContents, fileName) => {
-    try {
-      const jsonData = JSON.parse(fileContents);
-      
-      console.log('Loaded .covdiff.json file:', jsonData);
-      
-      setCovdiffFilePath(fileName);
-      
-      // Store raw data for call graph
-      setRawCoverageData(jsonData);
-      
-      // Transform the data to visualization format for treemaps
-      const transformedData = transformCovdiffData(jsonData);
-      setCoverageData(transformedData);
-      
-    } catch (error) {
-      console.error('Error loading covdiff file:', error);
-      alert('Failed to load coverage file: ' + error.message);
-    }
+  }, [processCovdiffData]);
   }, []);
 
   const loadCovdiffFile = useCallback(async (filePath) => {
