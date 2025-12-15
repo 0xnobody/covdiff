@@ -38,8 +38,10 @@ export const DatabaseProvider = ({ children }) => {
   }, []);
 
   const openCovdiffFile = useCallback(async () => {
+    console.log('openCovdiffFile called');
     // Check if running in Electron
-    const isElectron = window.electron && typeof window.electron.openFileDialog === 'function';
+    const isElectron = window.electron?.isElectron === true;
+    console.log('isElectron:', isElectron);
     
     if (isElectron) {
       // Electron environment - use native file dialog
@@ -58,13 +60,16 @@ export const DatabaseProvider = ({ children }) => {
         await processCovdiffData(fileContents, filePath);
       }
     } else {
+      console.log('Web environment - creating file input');
       // Web environment - use HTML file input
       if (!fileInputRef.current) {
+        console.log('Creating new file input element');
         // Create file input if it doesn't exist
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = '.covdiff.json,.json';
         input.onchange = async (e) => {
+          console.log('File selected:', e.target.files[0]);
           const file = e.target.files[0];
           if (file) {
             const reader = new FileReader();
@@ -78,10 +83,10 @@ export const DatabaseProvider = ({ children }) => {
       }
       // Reset the value to allow selecting the same file again
       fileInputRef.current.value = '';
+      console.log('Clicking file input');
       fileInputRef.current.click();
     }
   }, [processCovdiffData]);
-  }, []);
 
   const loadCovdiffFile = useCallback(async (filePath) => {
     try {

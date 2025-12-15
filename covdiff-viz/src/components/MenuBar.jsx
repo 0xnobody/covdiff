@@ -7,14 +7,20 @@ const MenuBar = () => {
   const [isMaximized, setIsMaximized] = useState(false);
   const { openCovdiffFile } = useDatabaseContext();
   const fileInputRef = useRef(null);
+  const isElectron = window.electron?.isElectron === true;
 
   const handleMenuClick = (menuName) => {
     setActiveMenu(activeMenu === menuName ? null : menuName);
   };
 
   const handleOpenCovdiffFile = () => {
+    console.log('handleOpenCovdiffFile called');
     closeMenu();
-    openCovdiffFile();
+    try {
+      openCovdiffFile();
+    } catch (error) {
+      console.error('Error opening covdiff file:', error);
+    }
   };
 
   const handleMinimize = () => {
@@ -95,11 +101,13 @@ const MenuBar = () => {
       </div>
 
       {/* Right section: Window controls */}
-      <div style={{ display: 'flex', height: '100%', WebkitAppRegion: 'no-drag' }}>
-        <WindowControl onClick={handleMinimize} icon="─" />
-        <WindowControl onClick={handleMaximize} icon={isMaximized ? '❐' : '□'} />
-        <WindowControl onClick={handleClose} icon="✕" isClose />
-      </div>
+      {isElectron && (
+        <div style={{ display: 'flex', height: '100%', WebkitAppRegion: 'no-drag' }}>
+          <WindowControl onClick={handleMinimize} icon="─" />
+          <WindowControl onClick={handleMaximize} icon={isMaximized ? '❐' : '□'} />
+          <WindowControl onClick={handleClose} icon="✕" isClose />
+        </div>
+      )}
     </div>
   );
 };

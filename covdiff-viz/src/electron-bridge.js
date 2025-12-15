@@ -8,6 +8,7 @@ if (typeof window !== 'undefined' && window.require) {
   const { ipcRenderer } = window.require('electron');
 
   window.electron = {
+    isElectron: true,
     // Open file dialog
     openFileDialog: (options) => ipcRenderer.invoke('dialog:openFile', options),
     
@@ -36,6 +37,7 @@ if (typeof window !== 'undefined' && window.require) {
   // Fallback for non-Electron environment (e.g., web browser during development)
   console.warn('Not running in Electron environment, using mock electron API');
   window.electron = {
+    isElectron: false,
     openFileDialog: async () => ({ canceled: true, filePaths: [] }),
     fileExists: async () => false,
     readFile: async () => '',

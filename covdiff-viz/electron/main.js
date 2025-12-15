@@ -57,7 +57,7 @@ function createWindow() {
       contextIsolation: false, // Enable direct Node.js access in renderer
       enableRemoteModule: true,
     },
-    title: 'Fuzzer Coverage Dashboard',
+    title: 'covdiff',
   });
 
   // Load from Vite dev server in development, or from build in production
