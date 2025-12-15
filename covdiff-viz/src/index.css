@@ -1,0 +1,61 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* Customize flexlayout styles */
+.flexlayout__layout {
+  background-color: #f8fafc;
+}
+
+.flexlayout__tab {
+  background-color: #e2e8f0;
+  color: #1e293b;
+}
+
+.flexlayout__tab:hover {
+  background-color: #cbd5e1;
+}
+
+.flexlayout__tab_selected {
+  background-color: #fff;
+  color: #1e293b;
+}
+
+.flexlayout__tabset_header {
+  background-color: #f1f5f9;
+  border-bottom: 1px solid #cbd5e1;
+}
+
+.flexlayout__splitter {
+  background-color: #cbd5e1;
+}
+
+.flexlayout__splitter:hover {
+  background-color: #94a3b8;
+}
+
+.flexlayout__tabset-selected {
+  background-color: #fff;
+}
+
+/* Cytoscape container fix */
+.cy {
+  width: 100%;
+  height: 100%;
+}
